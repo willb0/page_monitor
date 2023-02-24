@@ -1,14 +1,14 @@
 package page_refresh
 
 import (
+	"context"
 	"crypto/sha256"
 	"io/ioutil"
 	"net/http"
 	"reflect"
 	"time"
 
-	"github.com/itzmeanjan/pub0sub/ops"
-	"github.com/itzmeanjan/pub0sub/publisher"
+	"github.com/redis/go-redis/v9"
 )
 
 type PageRefresher struct {
@@ -24,6 +24,19 @@ func NewPageRefresher(page_url string) *PageRefresher {
 }
 
 func (p *PageRefresher) CheckForChanges() bool {
+	html := p.GetHTML()
+	hasher := sha256.New()
+	hasher.Write([]byte(html))
+	hashed_html := hasher.Sum(nil)
+	res := reflect.DeepEqual(hashed_html, p.current_content)
+	if !res {
+		p.current_content = hashed_html
+		return true
+	}
+	return false
+}
+
+func (p *PageRefresher) GetHTML() []byte {
 	resp, err := http.Get(p.page_url)
 
 	if err != nil {
@@ -36,27 +49,16 @@ func (p *PageRefresher) CheckForChanges() bool {
 	if err != nil {
 		panic(err)
 	}
-	hasher := sha256.New()
-	hasher.Write([]byte(html))
-	hashed_html := hasher.Sum(nil)
-	res := reflect.DeepEqual(hashed_html, p.current_content)
-	if !res {
-		p.current_content = hashed_html
-		return true
-	}
-	return false
+	return html
 }
 
-func (p *PageRefresher) WatchForChangesAndNotify(pub *publisher.Publisher,refresh_rate int){
+func (p *PageRefresher) WatchForChangesAndNotify(ctx context.Context,r *redis.Client,refresh_rate int){
 	for {
 		time.Sleep(time.Second * time.Duration(refresh_rate))
 		println("checking for changes")
 		if p.CheckForChanges() {
 			println("it changed!")
-			data := []byte("the page refreshed!!!")
-			topics := []string{"page_refresh"}
-			msg := ops.Msg{Topics: topics, Data: data}
-			pub.Publish(&msg)
+			r.Publish(ctx,"page_refresh",p.GetHTML())
 		}
 	}
 } 
