@@ -1,0 +1,8 @@
+package: .
+import:
+- package: github.com/itzmeanjan/pub0sub
+  version: ~0.2.3
+  subpackages:
+  - ops
+  - publisher
+- package: page_monitor/page_refresh
